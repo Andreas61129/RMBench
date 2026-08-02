@@ -1,0 +1,24 @@
+# Basic experiment configuration (keep unchanged, per RMBench's Your_Policy template)
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+# sir_baseline-specific parameters
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs/logs/rmbench/2026-08-01/07-22-17
+checkpoint_epoch: null  # if set (e.g. 100), load action_generator_epoch_<N>.pth etc. from the
+                         # checkpoint dir instead of the *_final.pth files (only valid for epochs
+                         # trainer.checkpoint_every actually snapshotted)
+device: null  # null = auto (cuda:0 if available else cpu)
+execute_horizon: 1  # actions executed per get_action() call before re-querying the model.
+                     # Keep at 1 unless you've verified the model has no obs-window-sensitive
+                     # state -- see rmbench_onboarding.md's recurrent/window-desync pitfall.
+use_ema: true
+use_graph: false  # true = grab on-the-fly segmentation/depth per step and build graph obs_dict
+                   # entries (Tier 2, best-effort -- see sir_baseline/rmbench_adapter.py). Must
+                   # match whether the checkpoint was trained with graph_modalities set.
+config_overrides: []  # extra Hydra overrides forwarded to sir_baseline's config, e.g.
+                       # ["manager.task_names=[press_button]"]
