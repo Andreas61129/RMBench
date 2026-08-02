@@ -1,3 +1,24 @@
+echo "Installing a matching CUDA toolkit (nvcc) into the conda env ..."
+# Needed so building CUDA extensions (pytorch3d, curobo) uses a compiler whose
+# major version matches torch's CUDA build (cu128), regardless of what CUDA
+# version is installed system-wide (e.g. a newer system CUDA on rolling-release
+# distros like CachyOS/Arch will otherwise be picked up first and fail the
+# version check in torch.utils.cpp_extension). Also pulls in gcc_linux-64/
+# gxx_linux-64 (a host compiler CUDA 12.8 actually supports, vs. whatever
+# newer system gcc a rolling-release distro ships).
+conda install -c nvidia -c conda-forge cuda-toolkit=12.8 gcc_linux-64 gxx_linux-64 -y
+export CUDA_HOME=$CONDA_PREFIX
+# The conda cuda-toolkit package splits headers into targets/<arch>/include
+# instead of $CUDA_HOME/include; CUDA_INC_PATH is explicitly checked by
+# torch.utils.cpp_extension as a fallback include dir.
+export CUDA_INC_PATH=$CONDA_PREFIX/targets/x86_64-linux/include
+# Point the host compiler at the conda-provided gcc/g++ instead of whatever
+# CC/CXX happen to be in the current shell (gcc_linux-64's activation hook
+# only fires on `conda activate`, not `conda install`, so it won't have taken
+# effect yet in this script even though the packages are now present).
+export CC=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-gcc
+export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-g++
+
 echo "Installing the necessary packages ..."
 pip install -r script/requirements.txt
 
@@ -5,7 +26,7 @@ echo "Installing pytorch3d ..."
 # cd third_party/pytorch3d_simplified
 # pip install -e .
 # cd ../..
-pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable"
+pip install "git+https://github.com/facebookresearch/pytorch3d.git@stable" --no-build-isolation
 
 echo "Adjusting code in sapien/wrapper/urdf_loader.py ..."
 # location of sapien, like "~/.conda/envs/RoboTwin/lib/python3.10/site-packages/sapien"
@@ -49,8 +70,11 @@ sed -i -E 's/(if np.linalg.norm\(delta_twist\) < 1e-4 )(or collide )(or not with
 
 echo "Installing Curobo ..."
 cd envs
-git clone --branch v0.7.8 --depth 1 https://github.com/NVlabs/curobo.git
+if [ ! -d curobo ]; then
+    git clone --branch v0.7.8 --depth 1 https://github.com/NVlabs/curobo.git
+fi
 cd curobo
+rm -rf build
 pip install -e . --no-build-isolation
 cd ../..
 
