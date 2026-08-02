@@ -5,7 +5,6 @@ import json
 
 import os
 import pickle
-import open3d as o3d
 
 
 def ensure_dir(file_path):
@@ -33,6 +32,9 @@ def save_pkl(save_path, dic_file):
 
 
 def save_pcd(save_path, pcd_arr, color=False):
+    import open3d as o3d  # lazy: this is the only user of open3d in this module, and it's not
+                           # installed in sir_baseline's own env (used server-side for Pattern B
+                           # deploy, which never calls this function) -- see RMBench/policy/SIR/.
     ensure_dir(save_path)
     point_cloud = o3d.geometry.PointCloud()
     point_arr = pcd_arr[:, :3]
