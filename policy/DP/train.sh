@@ -32,8 +32,9 @@ else
     echo -e "\033[33mTrain mode\033[0m"
 fi
 
-export HYDRA_FULL_ERROR=1 
+export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=${gpu_id}
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 if [ ! -d "./data/${task_name}-${task_config}-${expert_data_num}.zarr" ]; then
     bash process_data.sh ${task_name} ${task_config} ${expert_data_num}

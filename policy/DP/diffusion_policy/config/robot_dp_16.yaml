@@ -73,14 +73,17 @@ ema:
   max_value: 0.9999
 
 dataloader:
-  batch_size: 128
+  # Reduced from the upstream default of 128: that value OOMs on a 16GB card
+  # (observed ~14.5GB used on the very first batch at 240x320 images).
+  # 64 measured at ~7.5GB/16GB during the swap_T run, so raised from 32.
+  batch_size: 64
   num_workers: 0
   shuffle: True
   pin_memory: True
   persistent_workers: False
 
 val_dataloader:
-  batch_size: 128
+  batch_size: 64
   num_workers: 0
   shuffle: False
   pin_memory: True
