@@ -326,7 +326,7 @@ def main(usr_args):
 
     st_seed = 100000 * (1 + seed)
     suc_nums = []
-    test_num = 100
+    test_num = int(os.environ.get("RMBENCH_EVAL_TEST_NUM", "100"))
     topk = 1
 
     # model = get_model(usr_args)
