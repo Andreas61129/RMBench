@@ -19,6 +19,7 @@ from .camera import Camera
 
 from copy import deepcopy
 import subprocess
+import select
 from pathlib import Path
 import trimesh
 import imageio
@@ -593,6 +594,23 @@ class Base_Task(gym.Env):
 
     def _set_eval_video_ffmpeg(self, ffmpeg):
         self.eval_video_ffmpeg = ffmpeg
+
+    def _write_eval_video_frame(self, frame_bytes, timeout=10.0):
+        ffmpeg = getattr(self, "eval_video_ffmpeg", None)
+        if ffmpeg is None:
+            return
+        if ffmpeg.poll() is not None:
+            print(f"\033[91m[video] ffmpeg exited early (code {ffmpeg.returncode}); dropping frame\033[0m")
+            return
+        try:
+            fd = ffmpeg.stdin.fileno()
+            _, writable, _ = select.select([], [fd], [], timeout)
+            if not writable:
+                print(f"\033[91m[video] ffmpeg stdin not writable after {timeout}s; dropping frame (possible encoder stall)\033[0m")
+                return
+            ffmpeg.stdin.write(frame_bytes)
+        except (BrokenPipeError, OSError) as e:
+            print(f"\033[91m[video] ffmpeg write failed: {e}; dropping frame\033[0m")
 
     def close_env(self, clear_cache=False):
         if clear_cache:
@@ -1529,7 +1547,7 @@ class Base_Task(gym.Env):
         eval_video_freq = 1  # fixed
         if (self.eval_video_path is not None and self.take_action_cnt % eval_video_freq == 0):
             # self.eval_video_ffmpeg.stdin.write(self.now_obs["observation"]["head_camera"]["rgb"].tobytes())
-            self.eval_video_ffmpeg.stdin.write(self.now_obs["third_view_rgb"].tobytes())
+            self._write_eval_video_frame(self.now_obs["third_view_rgb"].tobytes())
 
         self.take_action_cnt += 1
         print(f"step: \033[92m{self.take_action_cnt} / {self.step_lim}\033[0m", end="\r")
@@ -1716,7 +1734,7 @@ class Base_Task(gym.Env):
                 self.eval_success = True
                 self.get_obs() # update obs
                 if (self.eval_video_path is not None):
-                    self.eval_video_ffmpeg.stdin.write(self.now_obs["third_view_rgb"].tobytes())
+                    self._write_eval_video_frame(self.now_obs["third_view_rgb"].tobytes())
                 return
 
         self._update_render()

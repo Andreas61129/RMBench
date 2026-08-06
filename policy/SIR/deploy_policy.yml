@@ -13,9 +13,15 @@ checkpoint_epoch: null  # if set (e.g. 100), load action_generator_epoch_<N>.pth
                          # checkpoint dir instead of the *_final.pth files (only valid for epochs
                          # trainer.checkpoint_every actually snapshotted)
 device: null  # null = auto (cuda:0 if available else cpu)
-execute_horizon: 1  # actions executed per get_action() call before re-querying the model.
-                     # Keep at 1 unless you've verified the model has no obs-window-sensitive
-                     # state -- see rmbench_onboarding.md's recurrent/window-desync pitfall.
+execute_horizon: 64  # actions executed per get_action() call before re-querying the model.
+                      # SIR is variant=non_temporal (no recurrent/temporal state -- see
+                      # sir_baseline/configs/main.yaml), so the window-desync pitfall in
+                      # rmbench_onboarding.md (written for recurrent models like AnoleVLM) does not
+                      # apply here. SIR's own native evaluator defaults to full-chunk execution
+                      # (replan_period=None, see sir_baseline/evaluator/robomme_tester.py's
+                      # "sir_main_non_temporal behaviour"); 64 is >= any realistic act_window so the
+                      # full predicted chunk always executes, matching that native default (same
+                      # pattern already used by evaluate_rmbench_offline.py's offline diagnostic).
 use_ema: true
 use_graph: false  # true = grab on-the-fly segmentation/depth per step and build graph obs_dict
                    # entries (Tier 2, best-effort -- see sir_baseline/rmbench_adapter.py). Must

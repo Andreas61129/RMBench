@@ -119,7 +119,7 @@ def get_model(usr_args):  # Only ever called server-side -- heavy imports live h
     return RMBenchModelAdapter(
         checkpoint=usr_args["checkpoint"],
         device=usr_args.get("device"),
-        execute_horizon=int(usr_args.get("execute_horizon", 1)),
+        execute_horizon=int(usr_args.get("execute_horizon", 64)),
         config_overrides=usr_args.get("config_overrides", []),
         use_ema=_as_bool(usr_args.get("use_ema"), default=True),
         checkpoint_tag=checkpoint_tag,
