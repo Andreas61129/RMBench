@@ -13,7 +13,7 @@
 checkpoint=${1:?checkpoint dir required, e.g. logs/rmbench/2026-08-01/12-00-00}
 port=${2:-9999}
 use_ema=${3:-true}
-execute_horizon=${4:-1}
+execute_horizon=${4:-64}
 checkpoint_epoch=${5:-}
 
 cd ../.. # move to RMBench root (policy_model_server.py resolves task_config paths relative to cwd)

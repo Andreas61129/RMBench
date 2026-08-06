@@ -59,7 +59,9 @@ def _build_instance_id_to_name(task_env) -> dict:
     if scene is None:
         return out
     for actor in scene.get_all_actors():
-        out[int(actor.id)] = actor.name or ""
+        # SAPIEN 3.x Entity has no `.id`; `.per_scene_id` matches segmentation channel 1 (see
+        # _raw_actor_segmentation above) -- see precompute_segdepth_rmbench.py's same fix.
+        out[int(actor.per_scene_id)] = actor.name or ""
     return out
 
 

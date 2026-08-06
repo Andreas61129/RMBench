@@ -1,0 +1,24 @@
+# Variant of deploy_policy.yml for the graph-only ablation checkpoint (manager=rmbench_graph_only,
+# use_image_graph_mode=false, graph_modalities=[bbox_coordinates]) -- see
+# sir_baseline/configs/manager/rmbench_graph_only.yaml for why this needs its own file: the
+# checkpoint's action_generator state_dict has graph_emb_dict.bbox_coordinates_* keys and no
+# img_emb_dict.* keys, so loading it against the default manager=rmbench (image-only) config
+# fails with a state_dict key mismatch. config_overrides is a real YAML list here (unlike CLI
+# --overrides, which can't cleanly pass a list through policy_model_server.py's parser).
+#
+# Usage: point policy_model_server.py's --config at this file instead of deploy_policy.yml.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs/logs/rmbench/2026-08-05/22-28-05
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true  # client-side: build+send graph obs_dict entries (see deploy_policy.py's eval())
+config_overrides: ["manager=rmbench_graph_only"]

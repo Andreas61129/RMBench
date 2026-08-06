@@ -219,9 +219,15 @@ class Base_Task(gym.Env):
         self.engine.set_renderer(self.renderer)
 
         sapien.render.set_camera_shader_dir("rt")
-        sapien.render.set_ray_tracing_samples_per_pixel(32)
+        # The bundled OIDN is 2.0.1, whose CUDA backend predates newer GPU architectures; on such
+        # a GPU it fails with "unsupported device type: CUDA" and every frame then hits "invalid
+        # handle", silently leaving renders UN-denoised (visibly grainy, ~1.6x the high-frequency
+        # energy of the recorded demos). Policies trained on the clean demo images then see
+        # out-of-distribution input for the whole rollout. Override with RMBENCH_RT_DENOISER=optix
+        # (or none, plus a higher RMBENCH_RT_SPP) when OIDN cannot initialise.
+        sapien.render.set_ray_tracing_samples_per_pixel(int(os.environ.get("RMBENCH_RT_SPP", "32")))
         sapien.render.set_ray_tracing_path_depth(8)
-        sapien.render.set_ray_tracing_denoiser("oidn")
+        sapien.render.set_ray_tracing_denoiser(os.environ.get("RMBENCH_RT_DENOISER", "oidn"))
 
         # declare sapien scene
         scene_config = sapien.SceneConfig()
