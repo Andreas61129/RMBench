@@ -1,0 +1,23 @@
+# Variant of deploy_policy.yml for the temporal-keyframe ablation checkpoint (manager=
+# rmbench_temporal_keyframe, built on rmbench_graph_only.yaml + use_temporal_keyframe: true). See
+# sir_baseline/configs/manager/rmbench_temporal_keyframe.yaml for the design: adds one frozen-t0
+# graph key per (modality, camera) pair alongside the existing live keys. Needs its own file for
+# the same reason deploy_policy_graph_only.yml does: the checkpoint's state_dict has
+# graph_emb_dict.bbox_coordinates_*_t0 keys the default manager config doesn't know about.
+#
+# Usage: point policy_model_server.py's --config at this file instead of deploy_policy.yml.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/temporal_scene_graphs/logs/robomme/2026-08-07/15-50-11
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true  # client-side: build+send graph obs_dict entries (see deploy_policy.py's eval())
+config_overrides: ["manager=rmbench_temporal_keyframe"]

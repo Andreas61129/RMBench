@@ -1,0 +1,17 @@
+# Variant of deploy_policy.yml for the wrist-image + front-graph checkpoint (manager=
+# rmbench_wrist_image_front_graph). See sir_baseline/configs/manager/rmbench_wrist_image_front_graph.yaml.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs/logs/rmbench/2026-08-07/08-06-47
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true  # client-side: build+send graph obs_dict entries (see deploy_policy.py's eval())
+config_overrides: ["manager=rmbench_wrist_image_front_graph"]
