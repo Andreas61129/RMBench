@@ -1,0 +1,17 @@
+# Pattern-A (in-process) config for sir_baseline -- see deploy_policy.py's module docstring for
+# why this exists alongside policy/SIR (Pattern B). Same keys as policy/SIR/deploy_policy.yml.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs/logs/rmbench/2026-08-05/00-34-33
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: false
+config_overrides: []
