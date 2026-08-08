@@ -1,0 +1,20 @@
+# Variant of deploy_policy.yml for the v3 ablation checkpoint (manager=
+# rmbench_temporal_keyframe_v3, built on v1's structure + extra_named_instances gripper nodes).
+# See sir_baseline/configs/manager/rmbench_temporal_keyframe_v3.yaml for the design.
+#
+# Usage: point policy_model_server.py's --config at this file instead of deploy_policy.yml.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/temporal_scene_graphs/logs/robomme/2026-08-08/07-06-28
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true  # client-side: build+send graph obs_dict entries (see deploy_policy.py's eval())
+config_overrides: ["manager=rmbench_temporal_keyframe_v3"]

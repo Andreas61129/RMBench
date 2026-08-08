@@ -56,8 +56,12 @@ def get_val_mask(n_episodes, val_ratio, seed=0):
     # have at least 1 episode for validation, and at least 1 episode for train
     n_val = min(max(1, round(n_episodes * val_ratio)), n_episodes - 1)
     rng = np.random.default_rng(seed=seed)
-    # val_idxs = rng.choice(n_episodes, size=n_val, replace=False)
-    val_idxs = -1
+    # Previously hardcoded to val_idxs = -1 (always just the single last episode), which silently
+    # ignored n_val/val_ratio entirely -- every DP run in this repo has actually been training on
+    # 49/50 episodes and validating on 1, regardless of the configured val_ratio. Restored to
+    # honor n_val so val_ratio actually controls the split size (needed for a fair train/val split
+    # comparison against SIR's train_per=0.95 -> 47/3 split on the same 50-episode dataset).
+    val_idxs = rng.choice(n_episodes, size=n_val, replace=False)
     val_mask[val_idxs] = True
     return val_mask
 
