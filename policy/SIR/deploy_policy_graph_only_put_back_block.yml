@@ -1,0 +1,23 @@
+# Non-temporal control for the put_back_block 41/100 run.
+#
+# That run used manager=rmbench_temporal_keyframe (t0 snapshot ON). This one uses
+# rmbench_graph_only, which is the SAME config with use_temporal_keyframe removed -- verified by
+# diff to be the only functional line that differs. Everything else is held constant: graph-only
+# (no images), bbox_coordinates, all three cameras, 100 epochs, num_workers 0.
+#
+# Checkpoint dir is pinned (not the default timestamped one) so eval needs no directory guessing.
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/temporal_scene_graphs/logs/robomme/keyframe_runs/pbb_graph_only_control
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true
+config_overrides: ["manager=rmbench_graph_only", "manager.task_names=[put_back_block]"]

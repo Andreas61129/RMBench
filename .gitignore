@@ -15,6 +15,9 @@ task_config/
 # eval result
 eval_result/
 
+# slurm job logs
+logs/
+
 # Code Generation
 assets/*
 !assets/_download.py
