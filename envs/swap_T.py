@@ -120,5 +120,9 @@ class swap_T(Base_Task):
             angle1 < angle_th and angle2 < angle_th and \
             self.is_left_gripper_open() and self.is_right_gripper_open() and T_block1_pose.p[2] < 0.77 and T_block2_pose.p[2] < 0.77:
             self.max_reward = max(self.max_reward, 1.0)
+            import os
+            if os.environ.get("RMBENCH_LOG_SWAP_RESIDUAL"):
+                print(f"SWAP_RESIDUAL pos1_diff={pos1_diff:.5f} pos2_diff={pos2_diff:.5f} "
+                      f"angle1_deg={np.degrees(angle1):.3f} angle2_deg={np.degrees(angle2):.3f}", flush=True)
             return True
         return False
