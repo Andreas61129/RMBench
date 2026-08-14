@@ -37,6 +37,18 @@ def get_camera_config(camera_type):
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 
 
+def _patch_cam_shapes(cfg, real_shape):
+    # YAML anchors (&image_shape / *image_shape) are resolved by the YAML parser at load time,
+    # so head_cam/left_cam/right_cam/front_cam each get an independent copy of the placeholder
+    # [3, -1, -1] -- patching only head_cam's shape (the historical single-camera behavior)
+    # leaves any other active camera key stuck at -1, -1, which crashes obs_encoder.output_shape()
+    # (torch.zeros can't allocate a negative dimension). Patch every rgb camera key that's
+    # actually present in this config's shape_meta.obs instead.
+    for cam_key in ("head_cam", "front_cam", "left_cam", "right_cam"):
+        if cam_key in cfg.task.shape_meta.obs:
+            cfg.task.shape_meta.obs[cam_key].shape = list(real_shape)
+
+
 @hydra.main(
     version_base=None,
     config_path=str(pathlib.Path(__file__).parent.joinpath("diffusion_policy", "config")),
@@ -46,19 +58,12 @@ def main(cfg: OmegaConf):
     # will use the same time.
     head_camera_type = cfg.head_camera_type
     head_camera_cfg = get_camera_config(head_camera_type)
-    cfg.task.image_shape = [3, head_camera_cfg["h"], head_camera_cfg["w"]]
-    cfg.task.shape_meta.obs.head_cam.shape = [
-        3,
-        head_camera_cfg["h"],
-        head_camera_cfg["w"],
-    ]
+    real_shape = [3, head_camera_cfg["h"], head_camera_cfg["w"]]
+    cfg.task.image_shape = real_shape
+    _patch_cam_shapes(cfg, real_shape)
     OmegaConf.resolve(cfg)
-    cfg.task.image_shape = [3, head_camera_cfg["h"], head_camera_cfg["w"]]
-    cfg.task.shape_meta.obs.head_cam.shape = [
-        3,
-        head_camera_cfg["h"],
-        head_camera_cfg["w"],
-    ]
+    cfg.task.image_shape = real_shape
+    _patch_cam_shapes(cfg, real_shape)
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)

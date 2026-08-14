@@ -18,6 +18,14 @@ import pdb
 
 class RobotImageDataset(BaseImageDataset):
 
+    # obs shape_meta key -> zarr dataset key
+    CAM_KEY_MAP = {
+        "head_cam": "head_camera",
+        "front_cam": "front_camera",
+        "left_cam": "left_camera",
+        "right_cam": "right_camera",
+    }
+
     def __init__(
         self,
         zarr_path,
@@ -28,13 +36,20 @@ class RobotImageDataset(BaseImageDataset):
         val_ratio=0.0,
         batch_size=128,
         max_train_episodes=None,
+        shape_meta=None,
     ):
 
         super().__init__()
+        # shape_meta=None preserves the historical head_camera-only behavior; pass shape_meta to
+        # activate whichever cameras are present in shape_meta.obs (e.g. head_cam+left_cam+right_cam).
+        if shape_meta is not None:
+            self.cam_keys = [k for k in shape_meta["obs"].keys() if k in self.CAM_KEY_MAP]
+        else:
+            self.cam_keys = ["head_cam"]
+        zarr_keys = [self.CAM_KEY_MAP[k] for k in self.cam_keys] + ["state", "action"]
         self.replay_buffer = ReplayBuffer.copy_from_path(
             zarr_path,
-            # keys=['head_camera', 'front_camera', 'left_camera', 'right_camera', 'state', 'action'],
-            keys=["head_camera", "state", "action"],
+            keys=zarr_keys,
         )
 
         val_mask = get_val_mask(n_episodes=self.replay_buffer.n_episodes, val_ratio=val_ratio, seed=seed)
@@ -93,19 +108,14 @@ class RobotImageDataset(BaseImageDataset):
 
     def _sample_to_data(self, sample):
         agent_pos = sample["state"].astype(np.float32)  # (agent_posx2, block_posex3)
-        head_cam = np.moveaxis(sample["head_camera"], -1, 1) / 255
-        # front_cam = np.moveaxis(sample['front_camera'],-1,1)/255
-        # left_cam = np.moveaxis(sample['left_camera'],-1,1)/255
-        # right_cam = np.moveaxis(sample['right_camera'],-1,1)/255
+        obs = {
+            cam: np.moveaxis(sample[self.CAM_KEY_MAP[cam]], -1, 1) / 255  # T, 3, H, W
+            for cam in self.cam_keys
+        }
+        obs["agent_pos"] = agent_pos  # T, D
 
         data = {
-            "obs": {
-                "head_cam": head_cam,  # T, 3, H, W
-                # 'front_cam': front_cam, # T, 3, H, W
-                # 'left_cam': left_cam, # T, 3, H, W
-                # 'right_cam': right_cam, # T, 3, H, W
-                "agent_pos": agent_pos,  # T, D
-            },
+            "obs": obs,
             "action": sample["action"].astype(np.float32),  # T, D
         }
         return data
@@ -133,19 +143,14 @@ class RobotImageDataset(BaseImageDataset):
 
     def postprocess(self, samples, device):
         agent_pos = samples["state"].to(device, non_blocking=True)
-        head_cam = samples["head_camera"].to(device, non_blocking=True) / 255.0
-        # front_cam = samples['front_camera'].to(device, non_blocking=True) / 255.0
-        # left_cam = samples['left_camera'].to(device, non_blocking=True) / 255.0
-        # right_cam = samples['right_camera'].to(device, non_blocking=True) / 255.0
+        obs = {
+            cam: samples[self.CAM_KEY_MAP[cam]].to(device, non_blocking=True) / 255.0  # B, T, 3, H, W
+            for cam in self.cam_keys
+        }
+        obs["agent_pos"] = agent_pos  # B, T, D
         action = samples["action"].to(device, non_blocking=True)
         return {
-            "obs": {
-                "head_cam": head_cam,  # B, T, 3, H, W
-                # 'front_cam': front_cam, # B, T, 3, H, W
-                # 'left_cam': left_cam, # B, T, 3, H, W
-                # 'right_cam': right_cam, # B, T, 3, H, W
-                "agent_pos": agent_pos,  # B, T, D
-            },
+            "obs": obs,
             "action": action,  # B, T, D
         }
 

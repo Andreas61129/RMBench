@@ -45,17 +45,31 @@ def main():
         type=int,
         help="Number of episodes to process (e.g., 50)",
     )
+    parser.add_argument(
+        "--cameras",
+        nargs="+",
+        default=["head_camera"],
+        help="Which observation/<cam>/rgb streams to extract into the zarr (default: head_camera only).",
+    )
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default="",
+        help="Appended to task_config in the output zarr filename, so a multi-camera variant doesn't "
+        "collide with the default single-camera zarr for the same task/task_config/num.",
+    )
     args = parser.parse_args()
 
     task_name = args.task_name
     num = args.expert_data_num
     task_config = args.task_config
+    cameras = args.cameras
 
     load_dir = "../../data/" + str(task_name) + "/" + str(task_config)
 
     total_count = 0
 
-    save_dir = f"./data/{task_name}-{task_config}-{num}.zarr"
+    save_dir = f"./data/{task_name}-{task_config}{args.suffix}-{num}.zarr"
 
     if os.path.exists(save_dir):
         shutil.rmtree(save_dir)
@@ -66,12 +80,7 @@ def main():
     zarr_data = zarr_root.create_group("data")
     zarr_meta = zarr_root.create_group("meta")
 
-    head_camera_arrays, front_camera_arrays, left_camera_arrays, right_camera_arrays = (
-        [],
-        [],
-        [],
-        [],
-    )
+    camera_arrays = {cam: [] for cam in cameras}
     episode_ends_arrays, action_arrays, state_arrays, joint_action_arrays = (
         [],
         [],
@@ -94,12 +103,13 @@ def main():
 
         for j in range(0, left_gripper_all.shape[0]):
 
-            head_img_bit = image_dict_all["head_camera"][j]
             joint_state = vector_all[j]
 
             if j != left_gripper_all.shape[0] - 1:
-                head_img = cv2.imdecode(np.frombuffer(head_img_bit, np.uint8), cv2.IMREAD_COLOR)
-                head_camera_arrays.append(head_img)
+                for cam in cameras:
+                    img_bit = image_dict_all[cam][j]
+                    img = cv2.imdecode(np.frombuffer(img_bit, np.uint8), cv2.IMREAD_COLOR)
+                    camera_arrays[cam].append(img)
                 state_arrays.append(joint_state)
             if j != 0:
                 joint_action_arrays.append(joint_state)
@@ -112,23 +122,23 @@ def main():
     episode_ends_arrays = np.array(episode_ends_arrays)
     # action_arrays = np.array(action_arrays)
     state_arrays = np.array(state_arrays)
-    head_camera_arrays = np.array(head_camera_arrays)
     joint_action_arrays = np.array(joint_action_arrays)
-
-    head_camera_arrays = np.moveaxis(head_camera_arrays, -1, 1)  # NHWC -> NCHW
+    for cam in cameras:
+        camera_arrays[cam] = np.moveaxis(np.array(camera_arrays[cam]), -1, 1)  # NHWC -> NCHW
 
     compressor = zarr.Blosc(cname="zstd", clevel=3, shuffle=1)
     # action_chunk_size = (100, action_arrays.shape[1])
     state_chunk_size = (100, state_arrays.shape[1])
     joint_chunk_size = (100, joint_action_arrays.shape[1])
-    head_camera_chunk_size = (100, *head_camera_arrays.shape[1:])
-    zarr_data.create_dataset(
-        "head_camera",
-        data=head_camera_arrays,
-        chunks=head_camera_chunk_size,
-        overwrite=True,
-        compressor=compressor,
-    )
+    for cam in cameras:
+        cam_chunk_size = (100, *camera_arrays[cam].shape[1:])
+        zarr_data.create_dataset(
+            cam,
+            data=camera_arrays[cam],
+            chunks=cam_chunk_size,
+            overwrite=True,
+            compressor=compressor,
+        )
     zarr_data.create_dataset(
         "state",
         data=state_arrays,
