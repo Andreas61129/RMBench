@@ -1,0 +1,15 @@
+policy_name: null
+task_name: null
+task_config: null
+ckpt_setting: null
+seed: null
+instruction_type: unseen
+
+sir_repo_path: /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
+checkpoint: /mnt/projects/Temporal_Scene_Graphs/temporal_scene_graphs/logs/robomme/keyframe_runs/swapT_dino_patch
+checkpoint_epoch: 100
+device: null
+execute_horizon: 64
+use_ema: true
+use_graph: true
+config_overrides: ["manager=rmbench_t0_dense_vit", "manager.task_names=[swap_T]", "method/vision_encoder=dense_vit", "method.vision_encoder.patch_pool=none"]
