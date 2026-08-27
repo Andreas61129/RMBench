@@ -157,6 +157,12 @@ def _grab_graph_payload(TASK_ENV, id_to_name_cache: dict):
             "extrinsic": camera.get_extrinsic_matrix().tolist(),
             "instance_id_to_name": id_to_name_cache,
         }
+        # Only shipped when a checkpoint actually needs it (cropped_image_feature modality) --
+        # gated by env var since `seg` (already computed above for bboxes, free to reuse) is a
+        # full per-pixel (H,W) array and JSON-serializing/socket-sending it every step for every
+        # eval run would add real payload size for the checkpoints that don't use it.
+        if os.environ.get("RMBENCH_GRAPH_NEEDS_CROP") == "1":
+            graphs[cam_name]["instance_id_map"] = seg.tolist()
         if log_truth and cam_name == "head_camera":
             _log_graph_vs_truth(TASK_ENV, cam_name, camera, bboxes, depth_mm)
     return graphs
