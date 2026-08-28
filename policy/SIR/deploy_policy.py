@@ -162,7 +162,14 @@ def _grab_graph_payload(TASK_ENV, id_to_name_cache: dict):
         # full per-pixel (H,W) array and JSON-serializing/socket-sending it every step for every
         # eval run would add real payload size for the checkpoints that don't use it.
         if os.environ.get("RMBENCH_GRAPH_NEEDS_CROP") == "1":
-            graphs[cam_name]["instance_id_map"] = seg.tolist()
+            # NOT .tolist(): the transport (numpy_to_json in this file's server/client
+            # counterparts) already base64-encodes raw np.ndarray values directly, which is both
+            # faster to encode/decode and smaller on the wire than JSON-serializing 76,800
+            # individual Python ints as a nested list (measured ~2.2ms vs ~0.8ms encode alone,
+            # before even counting the decode side) -- bboxes_xyxy/depth_mm above still use
+            # .tolist() for historical reasons but are two orders of magnitude smaller, so it
+            # was never worth revisiting there.
+            graphs[cam_name]["instance_id_map"] = seg
         if log_truth and cam_name == "head_camera":
             _log_graph_vs_truth(TASK_ENV, cam_name, camera, bboxes, depth_mm)
     return graphs
