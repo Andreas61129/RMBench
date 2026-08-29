@@ -378,13 +378,38 @@ def eval_policy(task_name,
     policy_name = args["policy_name"]
     eval_func = eval_function_decorator(policy_name, "eval", conda_env=policy_conda_env)
 
-    now_seed = st_seed
+    # ---- optional explicit seed list --------------------------------------------------------
+    # By default this walks seeds consecutively from st_seed, so the evaluated scenes are
+    # whatever the RNG produces in order. RMBENCH_EVAL_SEEDS="s1,s2,..." instead names the exact
+    # scenes to run. That is what makes a difficulty-stratified subset possible: for press_button
+    # the seed fixes the two card digits, and the episode's length is card_1 + card_2 + 1
+    # presses, so a seed list is a difficulty selection. Unset, behaviour is unchanged.
+    #
+    # Seeds rejected by the expert check are SKIPPED rather than replaced by the next consecutive
+    # seed, because substituting would silently swap in a scene of unknown difficulty and break
+    # the point of naming them. The run therefore ends when the list is exhausted, which may be
+    # before test_num episodes if some were rejected.
+    _explicit = os.environ.get("RMBENCH_EVAL_SEEDS", "").strip()
+    _seeds = [int(s) for s in _explicit.replace(",", " ").split()] if _explicit else None
+    _seed_pos = 0
+    if _seeds:
+        test_num = len(_seeds)
+        print(f"\033[33mExplicit seed list: {test_num} seeds -> {_seeds}\033[0m", flush=True)
+
+    def _next_seed(cur):
+        nonlocal _seed_pos
+        if _seeds is None:
+            return cur + 1
+        _seed_pos += 1
+        return _seeds[_seed_pos] if _seed_pos < len(_seeds) else None
+
+    now_seed = _seeds[0] if _seeds else st_seed
     task_total_reward = 0
     clear_cache_freq = args["clear_cache_freq"]
 
     args["eval_mode"] = True
 
-    while succ_seed < test_num:
+    while succ_seed < test_num and now_seed is not None:
         render_freq = args["render_freq"]
         args["render_freq"] = 0
 
@@ -398,7 +423,7 @@ def eval_policy(task_name,
                 print("Error: ", e)
                 print(" -------------")
                 TASK_ENV.close_env()
-                now_seed += 1
+                now_seed = _next_seed(now_seed)
                 args["render_freq"] = render_freq
                 continue
             except Exception as e:
@@ -407,7 +432,7 @@ def eval_policy(task_name,
                 print("Error: ", stack_trace)
                 print(" -------------")
                 TASK_ENV.close_env()
-                now_seed += 1
+                now_seed = _next_seed(now_seed)
                 args["render_freq"] = render_freq
                 print("error occurs !")
                 continue
@@ -416,7 +441,7 @@ def eval_policy(task_name,
             succ_seed += 1
             suc_test_seed_list.append(now_seed)
         else:
-            now_seed += 1
+            now_seed = _next_seed(now_seed)
             args["render_freq"] = render_freq
             continue
 
@@ -475,6 +500,37 @@ def eval_policy(task_name,
         else:
             print("\033[91mFail!\033[0m")
 
+        # ---- per-episode diagnostics -------------------------------------------------------
+        # Several tasks compute rich progress state inside check_success() and then throw it
+        # away, leaving only the binary. press_button is the worst case: it knows card_id_1/2
+        # (the digits the policy had to read) and press_cnt_1/2 (how many times it actually
+        # pressed each button), and success requires press_cnt == card_id exactly on both plus
+        # the confirm press. An off-by-one and a policy that never moved both score 0, so a
+        # 0/100 run currently says nothing about WHY. Recording these turns each episode into a
+        # usable datapoint: wrong button, overshoot, undershoot, or no attempt at all.
+        #
+        # Task-agnostic by construction: attributes are collected only if the env defines them,
+        # so tasks without them log nothing extra and are byte-identical to before. Captured
+        # before close_env() so nothing has been torn down yet.
+        _diag = {}
+        for _attr in ("card_id_1", "card_id_2", "press_cnt_1", "press_cnt_2",
+                      "press_cnt_check_button", "press_flag_check_button"):
+            if hasattr(TASK_ENV, _attr):
+                _v = getattr(TASK_ENV, _attr)
+                _diag[_attr] = bool(_v) if isinstance(_v, (bool, np.bool_)) else int(_v)
+        if _diag:
+            _diag = {"episode": int(TASK_ENV.test_num), "seed": int(now_seed),
+                     "success": bool(succ), "steps": int(TASK_ENV.take_action_cnt), **_diag}
+            print("\033[96m[diag]\033[0m " + " ".join(f"{k}={v}" for k, v in _diag.items()),
+                  flush=True)
+            try:
+                _dd = args.get("eval_video_save_dir")
+                if _dd is not None:
+                    with open(os.path.join(str(_dd), "_diagnostics.jsonl"), "a") as _df:
+                        _df.write(json.dumps(_diag) + "\n")
+            except Exception as _e:                      # never let logging kill a 37h eval
+                print(f"[diag] could not write _diagnostics.jsonl: {_e}", flush=True)
+
         now_id += 1
         TASK_ENV.close_env(clear_cache=((succ_seed + 1) % clear_cache_freq == 0))
 
@@ -488,7 +544,7 @@ def eval_policy(task_name,
             f"Success rate: \033[96m{TASK_ENV.suc}/{TASK_ENV.test_num}\033[0m => \033[95m{round(TASK_ENV.suc/TASK_ENV.test_num*100, 1)}%\033[0m, current seed: \033[90m{now_seed}\033[0m\n"
         )
         # TASK_ENV._take_picture()
-        now_seed += 1
+        now_seed = _next_seed(now_seed)
 
     return now_seed, TASK_ENV.suc
 
