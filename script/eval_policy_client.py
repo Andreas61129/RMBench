@@ -344,12 +344,24 @@ def main(usr_args):
 
     topk_success_rate = sorted(suc_nums, reverse=True)[:topk]
 
+    # Divide by the episodes ACTUALLY run, not by the requested test_num.
+    #
+    # eval_policy rebinds its own local `test_num = len(_seeds)` when RMBENCH_EVAL_SEEDS is set,
+    # but that never propagated back here, so an EVAL_SEEDS run was scored against the default
+    # 100. Measured: cover_blocks_nontemporal_v2_sub got 1 success in 24 episodes and _result.txt
+    # said 0.01 instead of 0.042 -- understated by 24/100. The per-episode _diagnostics.jsonl was
+    # always correct; only this summary line was wrong, and it is the line the queue logs echo.
+    # A seed can also be SKIPPED (rejected scene), so even without EVAL_SEEDS the count run can be
+    # below the count requested. TASK_ENV.test_num is the true tally (zeroed before the loop,
+    # incremented once per completed episode).
+    episodes_run = getattr(TASK_ENV, "test_num", 0) or test_num
     file_path = os.path.join(save_dir, f"_result.txt")
     with open(file_path, "w") as file:
         file.write(f"Timestamp: {current_time}\n\n")
         file.write(f"Instruction Type: {instruction_type}\n\n")
+        file.write(f"Episodes: {episodes_run}\n\n")
         # file.write(str(task_reward) + '\n')
-        file.write("\n".join(map(str, np.array(suc_nums) / test_num)))
+        file.write("\n".join(map(str, np.array(suc_nums) / episodes_run)))
 
     print(f"Data has been saved to {file_path}")
     # return task_reward
@@ -513,11 +525,29 @@ def eval_policy(task_name,
         # so tasks without them log nothing extra and are byte-identical to before. Captured
         # before close_env() so nothing has been torn down yet.
         _diag = {}
+        # press_button: exact press counts vs the card digits.
+        # cover_blocks: current_state_pointer walks target_state_transition, 7 states for
+        #   ["000","100","110","111"] + the three uncover steps, with reward_list
+        #   [0,.05,.1,.15,.3,.6,1.0]. So the pointer IS a subgoal counter the env already
+        #   maintains and then throws away, and open_lst is the colour-determined uncover order
+        #   that makes one episode harder than another.
+        # Any other task contributes whichever of these it happens to define, or nothing.
         for _attr in ("card_id_1", "card_id_2", "press_cnt_1", "press_cnt_2",
-                      "press_cnt_check_button", "press_flag_check_button"):
+                      "press_cnt_check_button", "press_flag_check_button",
+                      "current_state_pointer", "max_reward", "fail_flag"):
             if hasattr(TASK_ENV, _attr):
                 _v = getattr(TASK_ENV, _attr)
-                _diag[_attr] = bool(_v) if isinstance(_v, (bool, np.bool_)) else int(_v)
+                if isinstance(_v, (bool, np.bool_)):
+                    _diag[_attr] = bool(_v)
+                elif isinstance(_v, (float, np.floating)):
+                    _diag[_attr] = round(float(_v), 4)
+                else:
+                    _diag[_attr] = int(_v)
+        # sequence-valued extras: length is the subgoal denominator, contents are the difficulty
+        for _attr, _key in (("target_state_transition", "n_subgoals"), ("open_lst", "open_lst")):
+            _v = getattr(TASK_ENV, _attr, None)
+            if isinstance(_v, (list, tuple)):
+                _diag[_key] = len(_v) if _key == "n_subgoals" else [int(x) for x in _v]
         if _diag:
             _diag = {"episode": int(TASK_ENV.test_num), "seed": int(now_seed),
                      "success": bool(succ), "steps": int(TASK_ENV.take_action_cnt), **_diag}
