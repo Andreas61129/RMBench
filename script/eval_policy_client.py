@@ -531,10 +531,19 @@ def eval_policy(task_name,
         #   [0,.05,.1,.15,.3,.6,1.0]. So the pointer IS a subgoal counter the env already
         #   maintains and then throws away, and open_lst is the colour-determined uncover order
         #   that makes one episode harder than another.
+        # put_back_block / rearrange_blocks: press_cnt + stage_id together let a failed episode
+        # be attributed to "never reached the next stage" (positional miss, the dominant failure
+        # mode measured on rearrange_blocks: 86% of failures stuck at stage_id 0) vs "reached the
+        # stage but a later button re-contact permanently vetoed success" (rearrange_blocks'
+        # check_success() has an unconditional `if self.press_cnt > 1: return False` gate that
+        # put_back_block's does not -- real, but only 9.5% of measured failures). Without
+        # stage_id, max_reward alone is degenerate for both tasks (only ever 1.0 on success, per
+        # _base_task.py init) and cannot distinguish these cases.
         # Any other task contributes whichever of these it happens to define, or nothing.
         for _attr in ("card_id_1", "card_id_2", "press_cnt_1", "press_cnt_2",
                       "press_cnt_check_button", "press_flag_check_button",
-                      "current_state_pointer", "max_reward", "fail_flag"):
+                      "current_state_pointer", "max_reward", "fail_flag",
+                      "press_cnt", "stage_id"):
             if hasattr(TASK_ENV, _attr):
                 _v = getattr(TASK_ENV, _attr)
                 if isinstance(_v, (bool, np.bool_)):
