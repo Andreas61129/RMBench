@@ -18,6 +18,14 @@ echo -e "\033[33mgpu id (to use): ${gpu_id}, port: ${port}, use_graph: ${use_gra
 
 cd ../.. # move to RMBench root
 
+# observe_and_pickup's eval videos also need a head_camera stream (third_view_rgb alone doesn't
+# show which object was picked up) -- scoped to this task only, every other task keeps its
+# existing single-video behaviour.
+EXTRA_VIDEO_OVERRIDE=()
+if [ "${task_name}" = "observe_and_pickup" ]; then
+    EXTRA_VIDEO_OVERRIDE=(--eval_video_extra_cameras "['head_camera']")
+fi
+
 PYTHONWARNINGS=ignore::UserWarning \
 python script/eval_policy_client.py --config policy/$policy_name/deploy_policy.yml \
     --port ${port} \
@@ -26,4 +34,5 @@ python script/eval_policy_client.py --config policy/$policy_name/deploy_policy.y
     --task_config ${task_config} \
     --ckpt_setting ${ckpt_setting} \
     --seed ${seed} \
-    --policy_name ${policy_name}
+    --policy_name ${policy_name} \
+    "${EXTRA_VIDEO_OVERRIDE[@]}"

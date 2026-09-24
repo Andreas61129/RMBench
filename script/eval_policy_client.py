@@ -466,33 +466,42 @@ def eval_policy(task_name,
         TASK_ENV.set_instruction(instruction=instruction)  # set language instruction
 
         if TASK_ENV.eval_video_path is not None:
-            ffmpeg = subprocess.Popen(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-loglevel",
-                    "error",
-                    "-f",
-                    "rawvideo",
-                    "-pixel_format",
-                    "rgb24",
-                    "-video_size",
-                    video_size,
-                    "-framerate",
-                    "10",
-                    "-i",
-                    "-",
-                    "-pix_fmt",
-                    "yuv420p",
-                    "-vcodec",
-                    "libx264",
-                    "-crf",
-                    "23",
-                    f"{TASK_ENV.eval_video_path}/episode{TASK_ENV.test_num}.mp4",
-                ],
-                stdin=subprocess.PIPE,
-            )
+            def _spawn_video_ffmpeg(out_path):
+                return subprocess.Popen(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "rawvideo",
+                        "-pixel_format",
+                        "rgb24",
+                        "-video_size",
+                        video_size,
+                        "-framerate",
+                        "10",
+                        "-i",
+                        "-",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-vcodec",
+                        "libx264",
+                        "-crf",
+                        "23",
+                        out_path,
+                    ],
+                    stdin=subprocess.PIPE,
+                )
+
+            ffmpeg = _spawn_video_ffmpeg(f"{TASK_ENV.eval_video_path}/episode{TASK_ENV.test_num}.mp4")
             TASK_ENV._set_eval_video_ffmpeg(ffmpeg)
+            # Extra camera streams (e.g. head_camera) -- empty unless args["eval_video_extra_cameras"]
+            # was explicitly set (see eval.sh's observe_and_pickup override); every other task's
+            # behaviour is unchanged.
+            for cam in args.get("eval_video_extra_cameras", []) or []:
+                ffmpeg_extra = _spawn_video_ffmpeg(f"{TASK_ENV.eval_video_path}/episode{TASK_ENV.test_num}_{cam}.mp4")
+                TASK_ENV._set_eval_video_ffmpeg(ffmpeg_extra, name=cam)
 
         succ = False
         model.call(func_name='reset_model')
@@ -540,12 +549,18 @@ def eval_policy(task_name,
         # stage_id, max_reward alone is degenerate for both tasks (only ever 1.0 on success, per
         # _base_task.py init) and cannot distinguish these cases.
         # Any other task contributes whichever of these it happens to define, or nothing.
+        # observe_and_pickup: picked_object_idx is None whenever nothing was ever lifted above
+        # the success height, vs a concrete (non-target) index when the WRONG object was lifted
+        # -- lets a 0-success run be attributed to "never grasped anything" vs "grasped the
+        # wrong object" instead of just a binary fail.
         for _attr in ("card_id_1", "card_id_2", "press_cnt_1", "press_cnt_2",
                       "press_cnt_check_button", "press_flag_check_button",
                       "current_state_pointer", "max_reward", "fail_flag",
-                      "press_cnt", "stage_id"):
+                      "press_cnt", "stage_id", "picked_object_idx", "target_object_idx"):
             if hasattr(TASK_ENV, _attr):
                 _v = getattr(TASK_ENV, _attr)
+                if _v is None:
+                    continue
                 if isinstance(_v, (bool, np.bool_)):
                     _diag[_attr] = bool(_v)
                 elif isinstance(_v, (float, np.floating)):
@@ -557,6 +572,22 @@ def eval_policy(task_name,
             _v = getattr(TASK_ENV, _attr, None)
             if isinstance(_v, (list, tuple)):
                 _diag[_key] = len(_v) if _key == "n_subgoals" else [int(x) for x in _v]
+        # swap_T: final block poses + ground-truth targets + the exact residuals check_success()
+        # itself computes (position-diff in the table XY plane, angle-diff in degrees), captured
+        # on whatever the LAST evaluated step was (success or step_lim) -- not just on success.
+        # Lets a 2D top-down debug plot compare where the robot actually placed each T-block
+        # against its target, on both successful and failed episodes, to tell a memory problem
+        # (wildly wrong placement) apart from a precision problem (close but outside threshold).
+        for _attr in ("pos1_diff", "pos2_diff", "angle1_deg", "angle2_deg"):
+            _v = getattr(TASK_ENV, _attr, None)
+            if _v is not None:
+                _diag[_attr] = round(float(_v), 5)
+        for _attr in ("T_block1_final_pos", "T_block1_final_quat", "T_block2_final_pos",
+                      "T_block2_final_quat", "target_pose1", "target_pose2",
+                      "verify_T_block1_q", "verify_T_block2_q"):
+            _v = getattr(TASK_ENV, _attr, None)
+            if _v is not None:
+                _diag[_attr] = [round(float(x), 5) for x in np.asarray(_v).tolist()]
         if _diag:
             _diag = {"episode": int(TASK_ENV.test_num), "seed": int(now_seed),
                      "success": bool(succ), "steps": int(TASK_ENV.take_action_cnt), **_diag}

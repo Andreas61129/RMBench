@@ -75,6 +75,10 @@ def main():
             "--seed", str(w),
             "--policy_name", args.policy_name,
         ]
+        # Mirror eval.sh's observe_and_pickup-only head_camera video override (see
+        # _base_task.py's eval_video_extra_cameras) so both eval entry points stay consistent.
+        if args.task_name == "observe_and_pickup":
+            cmd += ["--eval_video_extra_cameras", "['head_camera']"]
         log_path = RMBENCH_ROOT / f".eval_parallel_worker{w}.log"
         log_f = open(log_path, "w")
         print(f"[orchestrator] worker {w}: {n_ep} episodes, seed={w}, ckpt_setting={ckpt_setting_w} "

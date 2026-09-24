@@ -114,6 +114,20 @@ class swap_T(Base_Task):
         angle1 = quat_angle_diff_rad(T_block1_pose.q, self.verify_T_block1_q)
         angle2 = quat_angle_diff_rad(T_block2_pose.q, self.verify_T_block2_q)
 
+        # Read-only eval diagnostics: the LAST call's values persist as instance attributes, so
+        # whatever check_success() saw on the final evaluated step (success or step_lim) is what
+        # gets logged -- regardless of whether that step actually succeeded. Lets a 2D top-down
+        # debug plot compare the ground-truth target pose against where the robot actually placed
+        # each block, on both successful and failed episodes.
+        self.pos1_diff = float(pos1_diff)
+        self.pos2_diff = float(pos2_diff)
+        self.angle1_deg = float(np.degrees(angle1))
+        self.angle2_deg = float(np.degrees(angle2))
+        self.T_block1_final_pos = T_block1_pose.p.tolist()
+        self.T_block1_final_quat = T_block1_pose.q.tolist()
+        self.T_block2_final_pos = T_block2_pose.p.tolist()
+        self.T_block2_final_quat = T_block2_pose.q.tolist()
+
         angle_th = np.deg2rad(15.0)
 
         if pos1_diff < 0.025 and pos2_diff < 0.025 and \

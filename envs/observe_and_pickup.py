@@ -27,6 +27,11 @@ class observe_and_pickup(Base_Task):
         self.shelf.set_mass(0.1)
 
         self.get_obs_cnt = 0
+        # Which clutter object (index into self.object) is currently lifted, if any -- read-only
+        # eval diagnostic, does not affect check_success()'s own target-only condition below.
+        # Lets eval distinguish "grasped the wrong object" (a non-target idx gets set) from
+        # "grasped nothing" (stays None all episode).
+        self.picked_object_idx = None
 
         self.object: list[Actor] = []
         self.object_modelnames = []
@@ -181,6 +186,11 @@ class observe_and_pickup(Base_Task):
                np.linalg.norm(np.array(current_right_endpose[:3]) - np.array(self.orig_right_endpose[:3])) > 0.03:
                 self.fail_flag = True
             return False
+
+        for idx, obj in enumerate(self.object):
+            if obj.get_pose().p[2] > 0.8:
+                self.picked_object_idx = idx
+                break
 
         if self.object[self.target_object_idx].get_pose().p[2] > 0.8:
             return True

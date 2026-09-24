@@ -99,6 +99,10 @@ class Base_Task(gym.Env):
         self.now_obs = {}
         self.take_action_cnt = 0
         self.eval_video_path = kwags.get("eval_video_save_dir", None)
+        # Extra camera keys (e.g. "head_camera") to also record as separate eval videos,
+        # alongside the always-on third_view_rgb stream. Empty by default -- every task keeps
+        # its existing single-video behaviour unless explicitly opted in (see eval.sh).
+        self.eval_video_extra_cameras = kwags.get("eval_video_extra_cameras", None) or []
 
         self.save_freq = kwags.get("save_freq")
         self.world_pcd = None
@@ -598,25 +602,29 @@ class Base_Task(gym.Env):
         self.left_joint_path = args.get("left_joint_path", [])
         self.right_joint_path = args.get("right_joint_path", [])
 
-    def _set_eval_video_ffmpeg(self, ffmpeg):
-        self.eval_video_ffmpeg = ffmpeg
+    def _set_eval_video_ffmpeg(self, ffmpeg, name="third_view"):
+        # Keyed by stream name so an extra camera (see eval_video_extra_cameras) can run its own
+        # ffmpeg pipe alongside the default "third_view" one without disturbing it.
+        if not hasattr(self, "eval_video_ffmpegs"):
+            self.eval_video_ffmpegs = {}
+        self.eval_video_ffmpegs[name] = ffmpeg
 
-    def _write_eval_video_frame(self, frame_bytes, timeout=10.0):
-        ffmpeg = getattr(self, "eval_video_ffmpeg", None)
+    def _write_eval_video_frame(self, frame_bytes, name="third_view", timeout=10.0):
+        ffmpeg = getattr(self, "eval_video_ffmpegs", {}).get(name)
         if ffmpeg is None:
             return
         if ffmpeg.poll() is not None:
-            print(f"\033[91m[video] ffmpeg exited early (code {ffmpeg.returncode}); dropping frame\033[0m")
+            print(f"\033[91m[video] ffmpeg ({name}) exited early (code {ffmpeg.returncode}); dropping frame\033[0m")
             return
         try:
             fd = ffmpeg.stdin.fileno()
             _, writable, _ = select.select([], [fd], [], timeout)
             if not writable:
-                print(f"\033[91m[video] ffmpeg stdin not writable after {timeout}s; dropping frame (possible encoder stall)\033[0m")
+                print(f"\033[91m[video] ffmpeg ({name}) stdin not writable after {timeout}s; dropping frame (possible encoder stall)\033[0m")
                 return
             ffmpeg.stdin.write(frame_bytes)
         except (BrokenPipeError, OSError) as e:
-            print(f"\033[91m[video] ffmpeg write failed: {e}; dropping frame\033[0m")
+            print(f"\033[91m[video] ffmpeg ({name}) write failed: {e}; dropping frame\033[0m")
 
     def close_env(self, clear_cache=False):
         if clear_cache:
@@ -626,10 +634,11 @@ class Base_Task(gym.Env):
         self.close()
 
     def _del_eval_video_ffmpeg(self):
-        if self.eval_video_ffmpeg:
-            self.eval_video_ffmpeg.stdin.close()
-            self.eval_video_ffmpeg.wait()
-            del self.eval_video_ffmpeg
+        for ffmpeg in getattr(self, "eval_video_ffmpegs", {}).values():
+            if ffmpeg:
+                ffmpeg.stdin.close()
+                ffmpeg.wait()
+        self.eval_video_ffmpegs = {}
 
     def delay(self, delay_time, save_freq=None, language_annotation=None):
         render_freq = self.render_freq
@@ -1552,8 +1561,11 @@ class Base_Task(gym.Env):
 
         eval_video_freq = 1  # fixed
         if (self.eval_video_path is not None and self.take_action_cnt % eval_video_freq == 0):
-            # self.eval_video_ffmpeg.stdin.write(self.now_obs["observation"]["head_camera"]["rgb"].tobytes())
             self._write_eval_video_frame(self.now_obs["third_view_rgb"].tobytes())
+            for cam in getattr(self, "eval_video_extra_cameras", []):
+                cam_rgb = self.now_obs.get("observation", {}).get(cam, {}).get("rgb")
+                if cam_rgb is not None:
+                    self._write_eval_video_frame(cam_rgb.tobytes(), name=cam)
 
         self.take_action_cnt += 1
         print(f"step: \033[92m{self.take_action_cnt} / {self.step_lim}\033[0m", end="\r")
@@ -1741,6 +1753,10 @@ class Base_Task(gym.Env):
                 self.get_obs() # update obs
                 if (self.eval_video_path is not None):
                     self._write_eval_video_frame(self.now_obs["third_view_rgb"].tobytes())
+                    for cam in getattr(self, "eval_video_extra_cameras", []):
+                        cam_rgb = self.now_obs.get("observation", {}).get(cam, {}).get("rgb")
+                        if cam_rgb is not None:
+                            self._write_eval_video_frame(cam_rgb.tobytes(), name=cam)
                 return
 
         self._update_render()
