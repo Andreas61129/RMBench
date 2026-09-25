@@ -175,6 +175,26 @@ def _grab_graph_payload(TASK_ENV, id_to_name_cache: dict):
     return graphs
 
 
+def _target_instance_id_for(TASK_ENV):
+    """observe_and_pickup only: the true target's graph node instance id, for the
+    graph_ground_truth_target_filter debug flag (drops the other 4 shelf candidates from the
+    graph -- see sir_baseline/dataset/datasets.py's _rmbench_drop_wrong_candidates docstring for
+    why this is a no-op unless that flag is set). None for every other task or if
+    target_object_idx isn't set (defensive; should always be set once observe_and_pickup's
+    load_actors() has run).
+
+    Fixed shelf-slot instance ids, in task_env.object order -- same constant
+    scripts/replay_observe_pickup_object_assignment.py validates against real segdepth
+    instance_metadata, and scripts/precompute_observe_pickup_target_instance_id.py uses for the
+    training-side lookup.
+    """
+    target_idx = getattr(TASK_ENV, "target_object_idx", None)
+    if target_idx is None:
+        return None
+    candidate_ids = (69, 70, 71, 72, 73)
+    return candidate_ids[int(target_idx)]
+
+
 def _as_bool(value, default=True):
     """CLI --overrides only eval()s numeric-looking strings (see
     RMBench/script/policy_model_server.py:parse_args_and_config), so 'true'/'false' arrive as
@@ -267,11 +287,13 @@ def eval(TASK_ENV, model, observation):
         # Cache the live scene's actor id->name mapping once per episode (cheap, reused every
         # step) rather than every eval() call.
         TASK_ENV._sir_id_to_name = _build_instance_id_to_name(TASK_ENV) if use_graph else {}
+        TASK_ENV._sir_target_instance_id = _target_instance_id_for(TASK_ENV) if use_graph else None
 
     images, vector = encode_obs(observation)
     payload = {"vector": vector, "images": images}
     if use_graph:
         payload["graphs"] = _grab_graph_payload(TASK_ENV, TASK_ENV._sir_id_to_name)
+        payload["target_instance_id"] = TASK_ENV._sir_target_instance_id
 
     # get_action already caps its return to usr_args['execute_horizon'] actions (default 1) --
     # see RMBenchModelAdapter.get_action. We execute exactly that many steps here and then
@@ -294,6 +316,7 @@ def eval(TASK_ENV, model, observation):
         update_payload = {"vector": vector, "images": images}
         if use_graph:
             update_payload["graphs"] = _grab_graph_payload(TASK_ENV, TASK_ENV._sir_id_to_name)
+            update_payload["target_instance_id"] = TASK_ENV._sir_target_instance_id
         model.call(func_name="update_obs", obs=update_payload)
 
 
