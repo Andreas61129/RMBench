@@ -248,6 +248,14 @@ def main(usr_args):
     args['task_name'] = task_name
     args["task_config"] = task_config
     args["ckpt_setting"] = ckpt_setting
+    # eval.sh's --overrides only land in usr_args (this function's own param), not in `args`
+    # (loaded fresh from task_config/<name>.yml just above) -- must be copied across explicitly,
+    # same as the three fields right above. Without this, eval_video_extra_cameras (read from
+    # `args` down in eval_policy()) silently stayed [] regardless of what was passed on the CLI,
+    # so observe_and_pickup's head_camera video never actually got recorded despite eval.sh
+    # correctly passing the override. Confirmed: every observe_and_pickup run since that fix
+    # landed produced only episodeN.mp4, never episodeN_head_camera.mp4.
+    args["eval_video_extra_cameras"] = usr_args.get("eval_video_extra_cameras", [])
 
     embodiment_type = args.get("embodiment")
     embodiment_config_path = os.path.join(CONFIGS_PATH, "_embodiment_config.yml")
