@@ -10,6 +10,7 @@
 # get imported inside get_model()'s body, which never executes client-side. See
 # rmbench_onboarding.md Part 2.2 and RMBench/script/eval_policy_client.py for the confirmed
 # contract this relies on.
+import json
 import os
 import sys
 
@@ -246,6 +247,56 @@ def _log_swap_residual(TASK_ENV):
           f"angle1_deg={np.degrees(angle1):.3f} angle2_deg={np.degrees(angle2):.3f}", flush=True)
 
 
+def _log_action_trace(TASK_ENV, actions):
+    """Debug-only: append the raw per-step qpos action vector(s) returned by get_action() to a
+    JSONL file, one line per executed action. Built to test whether an episode that never
+    completes a grasp is a POLICY-OUTPUT collapse (actions go flat/near-repeated after an initial
+    attempt) or an EXECUTION-layer stall (the model keeps emitting real, changing commands that
+    the sim/controller isn't turning into motion) -- video alone can't distinguish these, and
+    RMBench's eval pipeline does not otherwise persist per-step actions anywhere (only summary
+    diagnostics + video are saved). Gated by RMBENCH_LOG_ACTIONS so it never runs in normal eval;
+    path from RMBENCH_LOG_ACTIONS_PATH."""
+    path = os.environ.get("RMBENCH_LOG_ACTIONS_PATH")
+    if not path:
+        return
+    ep = int(getattr(TASK_ENV, "test_num", -1))
+    with open(path, "a") as f:
+        for j, a in enumerate(actions):
+            f.write(json.dumps({
+                "episode": ep,
+                "step": int(TASK_ENV.take_action_cnt) + j,
+                "action": np.asarray(a, dtype=float).round(5).tolist(),
+            }) + "\n")
+
+
+def _log_reference_visibility(TASK_ENV, graphs, ref_id=None):
+    """Debug-only: log whether the reference-object instance id is present in any camera's live
+    bboxes this step, i.e. whether graph_memory_append_reference_node's server-side t0 injection
+    is currently backfilling an occluded object or the object is still genuinely visible. Tests
+    the hypothesis that eval scenes occlude the reference object much sooner after t=0 than
+    training demos do, and that the resulting occlusion event itself (not the actual scene
+    geometry) is what the policy has learned to treat as "time to grasp" -- if eval occludes
+    faster than training, that would fire the learned trigger early, matching the observed ~65-77
+    step eval grasp vs ~120 step demo grasp. Gated by RMBENCH_LOG_REF_VISIBILITY_PATH so it never
+    runs in normal eval."""
+    path = os.environ.get("RMBENCH_LOG_REF_VISIBILITY_PATH")
+    if not path:
+        return
+    ref_id = int(os.environ.get("RMBENCH_LOG_REF_VISIBILITY_ID", "74")) if ref_id is None else ref_id
+    visible_cams = []
+    for cam_name, g in graphs.items():
+        ids = [int(b[0]) for b in g.get("bboxes_xyxy", [])]
+        if ref_id in ids:
+            visible_cams.append(cam_name)
+    with open(path, "a") as f:
+        f.write(json.dumps({
+            "episode": int(getattr(TASK_ENV, "test_num", -1)),
+            "step": int(TASK_ENV.take_action_cnt),
+            "ref_id": ref_id,
+            "visible_cams": visible_cams,
+        }) + "\n")
+
+
 def get_model(usr_args):  # Only ever called server-side -- heavy imports live here.
     # usr_args['sir_repo_path'] points at the temporal_scene_graphs checkout, e.g.
     # /mnt/projects/Temporal_Scene_Graphs/sir_rmbench/temporal_scene_graphs
@@ -294,6 +345,8 @@ def eval(TASK_ENV, model, observation):
     if use_graph:
         payload["graphs"] = _grab_graph_payload(TASK_ENV, TASK_ENV._sir_id_to_name)
         payload["target_instance_id"] = TASK_ENV._sir_target_instance_id
+        if os.environ.get("RMBENCH_LOG_REF_VISIBILITY_PATH"):
+            _log_reference_visibility(TASK_ENV, payload["graphs"])
 
     # get_action already caps its return to usr_args['execute_horizon'] actions (default 1) --
     # see RMBenchModelAdapter.get_action. We execute exactly that many steps here and then
@@ -305,6 +358,8 @@ def eval(TASK_ENV, model, observation):
     # time -- but we must NOT push the post-chunk frame here too, or the next eval() call's
     # get_action would double-count it (see RMBenchModelAdapter.update_obs vs get_action).
     actions = model.call(func_name="get_action", obs=payload)
+    if os.environ.get("RMBENCH_LOG_ACTIONS") == "1":
+        _log_action_trace(TASK_ENV, actions)
     for i, action in enumerate(actions):
         TASK_ENV.take_action(action, action_type="qpos")
         if TASK_ENV.eval_success or TASK_ENV.take_action_cnt >= TASK_ENV.step_lim:
