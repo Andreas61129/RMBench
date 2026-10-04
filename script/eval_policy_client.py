@@ -595,7 +595,21 @@ def eval_policy(task_name,
                       "verify_T_block1_q", "verify_T_block2_q"):
             _v = getattr(TASK_ENV, _attr, None)
             if _v is not None:
-                _diag[_attr] = [round(float(x), 5) for x in np.asarray(_v).tolist()]
+                # These names are swap_T-specific (position+quat arrays), but the "collect
+                # whichever attributes the env happens to define" pattern above is task-blind by
+                # attribute NAME only, not by type -- rearrange_blocks defines its own
+                # target_pose1/target_pose2 as raw sapien.pysapien.Pose objects (see
+                # RMBench/envs/rearrange_blocks.py), a pure name collision with a different
+                # meaning. np.asarray(Pose) silently wraps it in a 0-d object array instead of
+                # raising, so the crash only surfaces later at .tolist()'s iteration
+                # ('Pose' object is not iterable) -- catch it here instead and skip the field,
+                # matching every other field's "log it if it fits, skip it otherwise" contract
+                # rather than taking down the whole eval over one non-swap_T attribute.
+                try:
+                    _arr = np.asarray(_v, dtype=float)
+                except (TypeError, ValueError):
+                    continue
+                _diag[_attr] = [round(float(x), 5) for x in _arr.tolist()]
         if _diag:
             _diag = {"episode": int(TASK_ENV.test_num), "seed": int(now_seed),
                      "success": bool(succ), "steps": int(TASK_ENV.take_action_cnt), **_diag}
